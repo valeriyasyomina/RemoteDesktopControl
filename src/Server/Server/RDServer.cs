@@ -188,12 +188,48 @@ namespace Server
                 {
                     SendOnlineClientsInfo((Socket)client, message);
                 }
+                else if (message.commandType == CommandType.CheckCLientStatus)
+                {
+                    CheckClientStatus((Socket)client, message);
+                }
             }
             catch (Exception exception)
             {
                 Console.WriteLine(exception.Message);
             }
 
+        }
+        private void CheckClientStatus(Socket client, RDProtocol message)
+        {
+            try
+            {
+                RDEndpoint checkClientEndPoint = null;
+                RDProtocolConvertor.ByteArrayToRDEndpoint(message.data, out checkClientEndPoint);
+                bool clientOnline = false;
+                for (int i = 0; i < clients.Count; i++)
+                {
+                    if (clients[i].tcpForClients.ipAddress.ToString() == checkClientEndPoint.ipAddress.ToString() && 
+                        clients[i].tcpForClients.portNumber == checkClientEndPoint.portNumber)
+                    {
+                        clientOnline = true;
+                        break;
+                    }
+                }
+                RDProtocol serverAnswer = new RDProtocol();
+                if (clientOnline)
+                {
+                    serverAnswer.commandType = CommandType.ClientOnline;
+                }
+                else
+                {
+                    serverAnswer.commandType = CommandType.ClientOffline;
+                }
+                serverTCP.SendMsgSize(serverAnswer, client);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(exception.Message);
+            }
         }
 
         private void SendOnlineClientsInfo(Socket client, RDProtocol message)

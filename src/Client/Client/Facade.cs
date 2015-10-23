@@ -55,6 +55,9 @@ namespace Client
         public delegate void ConnectionTerminatedUnexpectedly();
         public static event ConnectionTerminatedUnexpectedly onConnectionTerminatedUnexpectedly;
 
+        public delegate void ClientIsOffline();
+        public static event ClientIsOffline onClientIsOffline;
+
         public delegate void KeyPressed(byte key);
         public static event KeyPressed onKeyPressed;
      
@@ -134,6 +137,10 @@ namespace Client
         {
             onChangeKeyBorderLayout(language);
         }
+        private static void onClientIsOfflineEventHandler()
+        {
+            onClientIsOffline();
+        }
         public static void Init()
         {
             string logFileName = ConfigurationManager.AppSettings["LogFileName"];
@@ -159,6 +166,8 @@ namespace Client
             client.onChangeKeyBorderLayout += onChangeKeyBoardLayoutEventHandler;
 
             client.onConnectionTerminatedUnexpectedly += onConnTerminatedUnexpEventHandler;
+
+            client.onClientIsOffline += onClientIsOfflineEventHandler;
 
             client.FindServer();
             client.Start();

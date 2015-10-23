@@ -52,6 +52,9 @@ namespace Client
         public delegate void ConnectionTerminatedUnexpectedly();
         public event ConnectionTerminatedUnexpectedly onConnectionTerminatedUnexpectedly;
 
+        public delegate void ClientIsOffline();
+        public event ClientIsOffline onClientIsOffline;
+
         public delegate void KeyPressed(byte key);
         public event KeyPressed onKeyPressed;
 
@@ -83,6 +86,7 @@ namespace Client
         private IPEndPoint otherClientKeyBoardEndpoint;
 
         private RDEndpoint otherClientEndpoint;  // к кому подсоединен
+        private RDEndpoint clientConnectedToMeEndpoint;  // кто подсоединен ко мне
 
 
         private int serverBroadcastPort;
@@ -140,6 +144,7 @@ namespace Client
             endPointCheckOnline = new RDEndpoint();
 
             otherClientEndpoint = new RDEndpoint();
+            clientConnectedToMeEndpoint = new RDEndpoint();
 
             serverBroadcastPort = portNumber;
             serverWasFound = false;
@@ -189,6 +194,9 @@ namespace Client
 
             otherClientScreenEndpoint.ipAddress = null;
             otherClientScreenEndpoint.portNumber = 0;
+
+            clientConnectedToMeEndpoint.ipAddress = null;
+            clientConnectedToMeEndpoint.portNumber = 0;
         }
 
         private RDProtocol CreateLogInMessage(string Login, string Password)
@@ -277,18 +285,19 @@ namespace Client
             }
             catch (Exception exception)
             {
-                MessageBox.Show("Mouse " + exception.Message);
+                //MessageBox.Show("Mouse " + exception.Message);
+                onConnectionTerminatedUnexpectedly();
             } 
         }
 
         private void ScreenMaker()
         {
-            try
+            while (true)
             {
-                while (true)
+                onMakeScreen();
+                if (smbConnectedToMe)
                 {
-                    onMakeScreen();
-                    if (smbConnectedToMe)
+                    try
                     {
                         RDProtocol screenMessage = new RDProtocol();
                         screenMessage.commandType = CommandType.ShowScreen;
@@ -300,15 +309,16 @@ namespace Client
                         screenSender.Send(screenMessage);
 
                         RDProtocol answer = null;
-                        screenSender.Receive(out answer); // новое
+                        screenSender.Receive(out answer); // новое  
+                    }
+                    catch (Exception exception)
+                    {
+                        CloseConnectionToOtherClient();
+                        onConnectionTerminatedUnexpectedly();
+                        //MessageBox.Show("screen maker " + exception.Message);                        
                     }
                 }
             }
-            catch (Exception exception)
-            {
-                MessageBox.Show("screen maker " + exception.Message);
-                CloseConnectionToOtherClient();
-            } 
         }
 
        /* private void CommandToMakeScreen()
@@ -366,7 +376,8 @@ namespace Client
             }
             catch (Exception exception)
             {
-                MessageBox.Show("Mouse control + screen" + exception.Message);
+               // MessageBox.Show("Mouse control + screen" + exception.Message);
+                onConnectionTerminatedUnexpectedly();
             }           
         }
 
@@ -424,9 +435,9 @@ namespace Client
         }
         private void ScreenWasReceived(object socket)
         {
-            try
+            while (iHaveConnected)
             {
-                while (iHaveConnected)
+                try
                 {
                     Socket client = (Socket)socket;
 
@@ -439,26 +450,21 @@ namespace Client
 
                     RDProtocol screenMessage = null;
                     screenReceiver.Receive(out screenMessage, client, messageSize);
-
-
                     screenReceiver.Send(answer, client); /// новое
 
                     ParameterizedThreadStart threadStart = new ParameterizedThreadStart(SetDisplayScreenThread);
                     Thread thread = new Thread(threadStart);
-                    thread.Start(screenMessage.data);   
+                    thread.Start(screenMessage.data);
                 }
-
-             /*   MessageBox.Show("Screen");*/
-
-               // onScreenReceived(screenMessage.data);
+                catch (Exception exception)
+                {
+                    CloseConnectionToOtherClient();
+                    onConnectionTerminatedUnexpectedly();
+                  //  MessageBox.Show("Screen received" + exception.Message);
+                }
             }
-            catch (Exception exception)
-            {
-                MessageBox.Show("Screen received" + exception.Message);
-
-                CloseConnectionToOtherClient();
-            } 
         }
+
         private void WaitForScreens()
         {
             try
@@ -479,7 +485,8 @@ namespace Client
             }
             catch (Exception exception)
             {
-                MessageBox.Show("Wait for screenScreen " + exception.Message);
+               // MessageBox.Show("Wait for screenScreen " + exception.Message);
+                onConnectionTerminatedUnexpectedly();
 
                // CloseConnectionToOtherClient();
             } 
@@ -608,9 +615,16 @@ namespace Client
                     commandsReceiver.Send(clientAnswer, (Socket)socket);
                 }
                 else
-                {                      
-                    RDProtocolConvertor.ByteArrayToRDEndpoint(otherClientMsg.data, out otherClientScreenEndpoint);  // новое!
-                    otherClientScreenEndpoint.ipAddress = ((IPEndPoint)client.RemoteEndPoint).Address;  // новое
+                {
+                    ClientsInfo connectClientInfo = null;
+                    RDProtocolConvertor.ByteArrayToClientsInfo(otherClientMsg.data, out connectClientInfo);
+                 //   RDProtocolConvertor.ByteArrayToRDEndpoint(otherClientMsg.data, out otherClientScreenEndpoint);  // новое!
+
+                    otherClientScreenEndpoint.ipAddress = ((IPEndPoint)client.RemoteEndPoint).Address;              // новое
+                    otherClientScreenEndpoint.portNumber = connectClientInfo.clientsList[0].portNumber;
+
+                    clientConnectedToMeEndpoint.ipAddress = ((IPEndPoint)client.RemoteEndPoint).Address;
+                    clientConnectedToMeEndpoint.portNumber = connectClientInfo.clientsList[1].portNumber;
 
                     // новое
                     IPEndPoint endPoint = new IPEndPoint(otherClientScreenEndpoint.ipAddress, otherClientScreenEndpoint.portNumber);
@@ -667,6 +681,23 @@ namespace Client
             commandSender.CloseConnection();
         }
 
+        private RDProtocol CreateConnectToClientMessage()
+        {
+            RDProtocol messageConnect = new RDProtocol();
+            messageConnect.commandType = CommandType.ConnectToClient;
+
+            ClientsInfo clientInfo = new ClientsInfo();
+            clientInfo.clientsList = new List<RDEndpoint>();
+            clientInfo.clientsList.Add(screenEndpoint);
+            clientInfo.clientsList.Add(myEndpointForTCP);
+
+            byte[] byteConnectMsg = null;
+            RDProtocolConvertor.ClientsInfoToByteArray(clientInfo, out byteConnectMsg);
+            messageConnect.data = byteConnectMsg;
+
+            return messageConnect;
+        }
+
         public void ConnectToOtherClient(int clientIndex)
         {
             if (smbConnectedToMe)
@@ -676,10 +707,7 @@ namespace Client
             }
             if (!iHaveConnected)
             {
-
                 iHaveConnected = true;  //новое
-
-
 
                 otherClientEndpoint.ipAddress = otherClients[clientIndex].ipAddress;
                 otherClientEndpoint.portNumber = otherClients[clientIndex].portNumber;
@@ -687,15 +715,17 @@ namespace Client
                 commandSender.Init(SocketType.Stream, ProtocolType.Tcp);
 
                 IPEndPoint clientEndpoint = new IPEndPoint(otherClientEndpoint.ipAddress, otherClientEndpoint.portNumber);
-                commandSender.ConnectToEndPoint(clientEndpoint);
-                Socket otherClientSocket = commandSender.GetSocket();
+                RDProtocol messageConnect = CreateConnectToClientMessage();  // новое
 
-                RDProtocol messageConnect = new RDProtocol();
+                commandSender.ConnectToEndPoint(clientEndpoint);
+                Socket otherClientSocket = commandSender.GetSocket();                
+
+               /* RDProtocol messageConnect = new RDProtocol();
                 messageConnect.commandType = CommandType.ConnectToClient;
 
                 byte[] byteConnectMsg = null;
                 RDProtocolConvertor.RDEndpointToByteArray(screenEndpoint, out byteConnectMsg);
-                messageConnect.data = byteConnectMsg;
+                messageConnect.data = byteConnectMsg; */
 
                 commandsReceiver.Send(messageConnect, otherClientSocket);       
 
@@ -761,6 +791,44 @@ namespace Client
             Thread checkOnlineThread = new Thread(new ThreadStart(CheckAmIOnline));
             checkOnlineThread.IsBackground = true;
             checkOnlineThread.Start();
+        }
+
+        private bool IsClientOnline(RDEndpoint clientEndPoint)
+        {
+            try
+            {
+                clientTCP.Init(SocketType.Stream, ProtocolType.Tcp);
+
+                RDProtocol checkMessage = new RDProtocol();
+                checkMessage.commandType = CommandType.CheckCLientStatus;
+                byte[] byteMessage = null;
+                RDProtocolConvertor.RDEndpointToByteArray(clientEndPoint, out byteMessage);
+                checkMessage.data = byteMessage;
+
+                clientTCP.ConnectToEndPoint(serverEndpoit);
+                //   Socket serverSocket = clientTCP.GetSocket();
+
+                clientTCP.SendMsgSize(checkMessage);
+                RDProtocol serverAnswer = null;
+                clientTCP.Receive(out serverAnswer);
+                if (serverAnswer.commandType == CommandType.MessageSizeAccepted)
+                {
+                    RDProtocol clientStatusInfo = null;
+                    clientTCP.Send(checkMessage);
+                    clientTCP.Receive(out clientStatusInfo);
+                    if (clientStatusInfo.commandType == CommandType.ClientOnline)
+                    {
+                        clientTCP.CloseConnection();
+                        return true;
+                    }
+                }
+                clientTCP.CloseConnection();
+            }
+            catch (Exception exception)
+            {
+                onConnectionTerminatedUnexpectedly();
+            }
+            return false;
         }
 
         public void LogIn(string Login, string Password)
@@ -914,6 +982,12 @@ namespace Client
         {
             try
             {
+                /*  if (!IsClientOnline(otherClientEndpoint))
+                  {
+                      onClientIsOffline();
+                  }
+                  else
+                  {*/
                 mouseSender.Init(SocketType.Stream, ProtocolType.Tcp);
                 RDProtocol mouseCommandMsg = new RDProtocol();
                 mouseCommandMsg.commandType = command;
@@ -926,6 +1000,7 @@ namespace Client
                 mouseSender.ConnectToEndPoint(otherClientMouseEndpoint);
                 mouseSender.Send(mouseCommandMsg);
                 mouseSender.CloseConnection();
+                //}
             }
             catch (Exception exception)
             {
@@ -937,6 +1012,12 @@ namespace Client
         {
             try
             {
+                /*  if (!IsClientOnline(otherClientEndpoint))
+                  {
+                      onClientIsOffline();
+                  }
+                  else
+                  {*/
                 keyBoardSender.Init(SocketType.Stream, ProtocolType.Tcp);
                 RDProtocol keyBoardMsg = new RDProtocol();
                 keyBoardMsg.commandType = command;
@@ -954,6 +1035,7 @@ namespace Client
                 keyBoardSender.ConnectToEndPoint(otherClientKeyBoardEndpoint);
                 keyBoardSender.Send(keyBoardMsg);
                 keyBoardSender.CloseConnection();
+                // }
             }
             catch (Exception exception)
             {

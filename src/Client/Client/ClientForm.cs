@@ -21,6 +21,7 @@ namespace Client
         public ClientForm()
         {            
            InitializeComponent();
+           this.FormClosing += ClientForm_FormClosing;
            pbScreen.MouseMove += pbScreenOnMouseMove;
            pbScreen.MouseClick += pbScreenOnMouseClick;
            pbScreen.MouseDoubleClick += pbScreenOnMouseDblClick;
@@ -50,12 +51,25 @@ namespace Client
            Facade.onKeyPressed += onKeyPressedEventHandler;        
            Facade.onChangeKeyBorderLayout += onChangeKeyBoardLayoutEventHandler;
 
+           Facade.onClientIsOffline += onClientIsOfflineEventHandler;
+
            Rectangle screenResolution = InterfaceManipulation.GetCurrentScreenResolution();
-           Facade.SetClientScreenSize(screenResolution.Width, screenResolution.Height);
+           Facade.SetClientScreenSize(screenResolution.Width, screenResolution.Height);           
 
            InterfaceManipulation.InitScreenDisplayParameters();
         }
-       
+
+        void ClientForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            InterfaceManipulation.ChangeScreenResolution(Facade.GetClientScreenWidth(), Facade.GetClientScreenHeight());
+        }        
+
+        private static void onClientIsOfflineEventHandler()
+        {
+            Facade.CloseAllClientConnections();
+            InterfaceManipulation.ChangeScreenResolution(Facade.GetClientScreenWidth(), Facade.GetClientScreenHeight());
+            MessageBox.Show("Клиент вышел из системы!");        
+        }
         private static void onKeyPressedEventHandler(byte key)
         {
             InterfaceManipulation.PressKeyBoardKey(key);

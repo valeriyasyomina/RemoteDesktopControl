@@ -9,7 +9,7 @@ namespace RDProtocolLib
     public enum CommandType { FindSever, LogIn, LogOut, SignIn, MoveMouse, PressKey, ShowScreen, ClientsInfo, ConnectToClient, ServerFound,
                                 LogInOk, LogInError, MessageSize, MessageSizeAccepted, DisconnectFromClient, MouseDblClick, MouseLeftBtnCLick,
                                 MouseRightBtnCLick, MouseWheel, MouseUp, MouseDown, iAlreadyConnected, SmbConnectedToMe,
-                                ChangeLanguageLayout, ClientHasAlreadyBeenLogIn}
+                                ChangeLanguageLayout, ClientHasAlreadyBeenLogIn, CheckCLientStatus, ClientOnline, ClientOffline}
                                 
     [Serializable]
     public class RDProtocol
