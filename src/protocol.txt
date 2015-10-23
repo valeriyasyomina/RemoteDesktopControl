@@ -1,0 +1,24 @@
+	var formatter = new BinaryFormatter();
+            byte[] arr;
+            using (var stream = new MemoryStream())
+            {
+                formatter.Serialize(stream, a);
+                arr = stream.ToArray();
+            }
+            A obj;
+            using (var memStream = new MemoryStream())
+            {
+                var binForm = new BinaryFormatter();
+                memStream.Write(arr, 0, arr.Length);
+                memStream.Seek(0, SeekOrigin.Begin);
+                obj = (A) binForm.Deserialize(memStream);
+                
+            }
+
+ [Serializable]
+        class A
+        {
+            public int number;
+            public double d;
+            public OLOL ol;
+        }
